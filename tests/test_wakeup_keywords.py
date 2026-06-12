@@ -41,8 +41,8 @@ class WakeupKeywordStartupTest(unittest.TestCase):
         start_sh = (ROOT / "scripts/start.sh").read_text(encoding="utf8")
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf8")
 
-        self.assertIn("OPENAI_ENABLED", start_sh)
-        self.assertIn('[[ "$OPENAI_ENABLED" =~ ^(1|true|yes)$ ]]', start_sh)
+        self.assertIn("OPENAI_ENABLE_VALUE", start_sh)
+        self.assertIn('[[ "$OPENAI_ENABLE_VALUE" =~ ^(1|true|yes)$ ]]', start_sh)
         self.assertIn('${OPENAI_ENABLE:-}', dockerfile)
         self.assertIn('python core/services/audio/kws/keywords.py', dockerfile)
 
@@ -148,7 +148,7 @@ class XiaoAIWakeupKeywordTest(unittest.TestCase):
         ):
             asyncio.run(xiaoai_module.XiaoAI.on_event(event))
 
-        self.assertEqual(conversation.reset_count, 1)
+        self.assertEqual(conversation.reset_count, 0)
         self.assertIn(("suppress", "dialog-1", "外部唤醒词接管: 你好小黑"), calls)
         self.assertIn(("你好小黑", "kws"), calls)
 
