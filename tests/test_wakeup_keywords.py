@@ -57,23 +57,38 @@ class XiaoAIWakeupKeywordTest(unittest.TestCase):
             def instance(cls):
                 return cls()
 
-            def get_app_config(self, _path=None, default=None):
+            def get_app_config(self, path=None, default=None):
+                if path == "wakeup.keywords":
+                    return ["你好小黑"]
+                if path == "xiaoai":
+                    return {}
                 return default
 
         config_stub = types.SimpleNamespace(ConfigManager=ConfigManagerStub)
 
+        saved_modules = {
+            module_name: sys.modules.get(module_name)
+            for module_name in ("core.xiaoai", "core.wakeup_session")
+        }
         for module_name in ("core.xiaoai", "core.wakeup_session"):
             sys.modules.pop(module_name, None)
 
-        with mock.patch.dict(
-            sys.modules,
-            {
-                "numpy": np_stub,
-                "open_xiaoai_server": server_stub,
-                "core.utils.config": config_stub,
-            },
-        ):
-            xiaoai_module = importlib.import_module("core.xiaoai")
+        try:
+            with mock.patch.dict(
+                sys.modules,
+                {
+                    "numpy": np_stub,
+                    "open_xiaoai_server": server_stub,
+                    "core.utils.config": config_stub,
+                },
+            ):
+                xiaoai_module = importlib.import_module("core.xiaoai")
+        finally:
+            for module_name, module in saved_modules.items():
+                if module is None:
+                    sys.modules.pop(module_name, None)
+                else:
+                    sys.modules[module_name] = module
 
         calls = []
 
@@ -93,12 +108,15 @@ class XiaoAIWakeupKeywordTest(unittest.TestCase):
             def reset_retries(self):
                 self.reset_count += 1
 
+            def apply_runtime_config(self, _config):
+                pass
+
         async def suppress_dialog(dialog_id, reason):
             calls.append(("suppress", dialog_id, reason))
 
         conversation = ConversationStub()
-        xiaoai_module.XiaoAI._external_wakeup_keywords = {"你好小黑"}
         xiaoai_module.XiaoAI.conversation = conversation
+        xiaoai_module.XiaoAI.refresh_runtime_config()
 
         line = {
             "header": {
