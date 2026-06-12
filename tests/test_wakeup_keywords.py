@@ -66,11 +66,12 @@ class XiaoAIWakeupKeywordTest(unittest.TestCase):
 
         config_stub = types.SimpleNamespace(ConfigManager=ConfigManagerStub)
 
+        isolated_modules = ("core.xiaoai", "core.wakeup_session")
         saved_modules = {
             module_name: sys.modules.get(module_name)
-            for module_name in ("core.xiaoai", "core.wakeup_session")
+            for module_name in isolated_modules
         }
-        for module_name in ("core.xiaoai", "core.wakeup_session"):
+        for module_name in isolated_modules:
             sys.modules.pop(module_name, None)
 
         try:
@@ -149,8 +150,13 @@ class XiaoAIWakeupKeywordTest(unittest.TestCase):
             asyncio.run(xiaoai_module.XiaoAI.on_event(event))
 
         self.assertEqual(conversation.reset_count, 0)
-        self.assertIn(("suppress", "dialog-1", "外部唤醒词接管: 你好小黑"), calls)
-        self.assertIn(("你好小黑", "kws"), calls)
+        self.assertEqual(
+            calls,
+            [
+                ("suppress", "dialog-1", "外部唤醒词接管: 你好小黑"),
+                ("你好小黑", "kws"),
+            ],
+        )
 
 
 if __name__ == "__main__":
