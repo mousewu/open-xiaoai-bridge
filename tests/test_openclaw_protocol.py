@@ -4,7 +4,7 @@ from core.openclaw import OpenClawManager
 
 
 class OpenClawProtocolTest(unittest.TestCase):
-    def test_connect_params_support_current_protocol(self):
+    def test_connect_params_include_protocol_version_range(self):
         client_meta = {
             "id": "gateway-client",
             "displayName": "Open-Xiaoai Bridge",
@@ -28,6 +28,17 @@ class OpenClawProtocolTest(unittest.TestCase):
         self.assertEqual(client_meta, params["client"])
         self.assertEqual(scopes, params["scopes"])
         self.assertEqual({"token": "token"}, params["auth"])
+        self.assertNotIn("device", params)
+
+    def test_connect_params_use_empty_auth_token_when_token_is_none(self):
+        params = OpenClawManager._build_connect_params(
+            client_meta={"id": "gateway-client"},
+            scopes=[],
+            token=None,
+            device_payload=None,
+        )
+
+        self.assertEqual({"token": ""}, params["auth"])
         self.assertNotIn("device", params)
 
     def test_connect_params_include_device_payload(self):
