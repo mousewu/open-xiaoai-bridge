@@ -358,6 +358,7 @@ class OpenClawManager:
         client_meta: dict,
         scopes: list[str],
         device_payload: dict | None = None,
+        token: str | None = None,
     ) -> dict:
         connect_params = {
             "minProtocol": cls._min_protocol,
@@ -368,7 +369,7 @@ class OpenClawManager:
             "role": "operator",
             "scopes": scopes,
             "caps": [],
-            "auth": {"token": cls._token},
+            "auth": {"token": cls._token if token is None else token},
         }
         if device_payload:
             connect_params["device"] = device_payload

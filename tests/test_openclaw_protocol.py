@@ -5,8 +5,6 @@ from core.openclaw import OpenClawManager
 
 class OpenClawProtocolTest(unittest.TestCase):
     def test_connect_params_support_current_protocol(self):
-        previous_token = OpenClawManager._token
-        OpenClawManager._token = "token"
         client_meta = {
             "id": "gateway-client",
             "displayName": "Open-Xiaoai Bridge",
@@ -17,19 +15,18 @@ class OpenClawProtocolTest(unittest.TestCase):
         }
         scopes = ["operator.read", "operator.write"]
 
-        try:
-            params = OpenClawManager._build_connect_params(
-                client_meta=client_meta,
-                scopes=scopes,
-            )
-        finally:
-            OpenClawManager._token = previous_token
+        params = OpenClawManager._build_connect_params(
+            client_meta=client_meta,
+            scopes=scopes,
+            token="token",
+        )
 
         self.assertEqual(3, params["minProtocol"])
         self.assertEqual(4, params["maxProtocol"])
         self.assertEqual(client_meta, params["client"])
         self.assertEqual(scopes, params["scopes"])
         self.assertEqual({"token": "token"}, params["auth"])
+        self.assertNotIn("device", params)
 
     def test_connect_params_include_device_payload(self):
         device_payload = {
@@ -44,6 +41,7 @@ class OpenClawProtocolTest(unittest.TestCase):
             client_meta={"id": "gateway-client"},
             scopes=[],
             device_payload=device_payload,
+            token="token",
         )
 
         self.assertEqual(device_payload, params["device"])
