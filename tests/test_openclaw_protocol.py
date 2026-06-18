@@ -41,6 +41,17 @@ class OpenClawProtocolTest(unittest.TestCase):
         self.assertEqual({"token": ""}, params["auth"])
         self.assertNotIn("device", params)
 
+    def test_protocol_range_accepts_v3_and_v4_server_protocols(self):
+        params = OpenClawManager._build_connect_params(
+            client_meta={"id": "gateway-client"},
+            scopes=[],
+            token="token",
+        )
+
+        for server_protocol in (3, 4):
+            self.assertLessEqual(params["minProtocol"], server_protocol)
+            self.assertGreaterEqual(params["maxProtocol"], server_protocol)
+
     def test_connect_params_include_device_payload(self):
         device_payload = {
             "id": "device",

@@ -369,7 +369,7 @@ class OpenClawManager:
             "role": "operator",
             "scopes": scopes,
             "caps": [],
-            "auth": {"token": token or ""},
+            "auth": {"token": token if token is not None else ""},
         }
         if device_payload:
             connect_params["device"] = device_payload
