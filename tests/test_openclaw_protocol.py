@@ -21,8 +21,10 @@ class OpenClawProtocolTest(unittest.TestCase):
             token="token",
         )
 
-        self.assertEqual(3, params["minProtocol"])
-        self.assertEqual(4, params["maxProtocol"])
+        self.assertEqual(3, OpenClawManager._min_protocol)
+        self.assertEqual(4, OpenClawManager._max_protocol)
+        self.assertEqual(OpenClawManager._min_protocol, params["minProtocol"])
+        self.assertEqual(OpenClawManager._max_protocol, params["maxProtocol"])
         self.assertEqual(client_meta, params["client"])
         self.assertEqual(scopes, params["scopes"])
         self.assertEqual({"token": "token"}, params["auth"])
