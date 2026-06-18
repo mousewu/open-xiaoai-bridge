@@ -48,6 +48,8 @@ class OpenClawManager:
     _instance = None
     _initialized = False
     _reload_listener_registered = False
+    _min_protocol = 3
+    _max_protocol = 4
 
     # Connection
     _websocket = None
@@ -351,6 +353,28 @@ class OpenClawManager:
         }
 
     @classmethod
+    def _build_connect_params(
+        cls,
+        client_meta: dict,
+        scopes: list[str],
+        device_payload: dict | None = None,
+    ) -> dict:
+        connect_params = {
+            "minProtocol": cls._min_protocol,
+            "maxProtocol": cls._max_protocol,
+            "client": client_meta,
+            "locale": "zh-CN",
+            "userAgent": "open-xiaoai-bridge/1.0.0",
+            "role": "operator",
+            "scopes": scopes,
+            "caps": [],
+            "auth": {"token": cls._token},
+        }
+        if device_payload:
+            connect_params["device"] = device_payload
+        return connect_params
+
+    @classmethod
     async def connect(cls) -> bool:
         """Connect to OpenClaw gateway."""
         if not cls._initialized:
@@ -396,19 +420,11 @@ class OpenClawManager:
                 else None
             )
 
-            connect_params = {
-                "minProtocol": 3,
-                "maxProtocol": 3,
-                "client": client_meta,
-                "locale": "zh-CN",
-                "userAgent": "open-xiaoai-bridge/1.0.0",
-                "role": "operator",
-                "scopes": scopes,
-                "caps": [],
-                "auth": {"token": cls._token},
-            }
-            if device_payload:
-                connect_params["device"] = device_payload
+            connect_params = cls._build_connect_params(
+                client_meta=client_meta,
+                scopes=scopes,
+                device_payload=device_payload,
+            )
 
             # Send connect request
             res = await cls._request(
