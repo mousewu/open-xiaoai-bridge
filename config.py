@@ -187,12 +187,28 @@ APP_CONFIG = {
         "gain": 1.0,
     },
     "asr": {
-        # 支持 "sense_voice"（默认）、"paraformer"、"fire_red_asr" 或 "doubao"
+        # 支持 "sense_voice"（默认）、"paraformer"、"fire_red_asr"、
+        # "doubao"（录音文件识别）或 "sauc"（豆包流式语音识别大模型 2.0）
         "model": "sense_voice",
         # 是否优先使用 INT8 量化模型（仅本地模型生效）
         "int8": True,
         # 可选：显式指定 core/models/ 下的模型目录名（仅本地模型生效）
         # "model_dir": "",
+        # SAUC 流式识别配置（model = "sauc" 时生效）
+        # 两个入口协议相同，二选一：
+        #   - 方舟 Agent Plan（套餐 AFP 抵扣）:
+        #       url: wss://openspeech.bytedance.com/api/v3/plan/sauc/bigmodel_async
+        #       api_key: 方舟 Agent Plan 专属 API Key
+        #   - 火山豆包语音（按量计费，新版控制台）:
+        #       url: wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async
+        #       api_key: 语音控制台 API Key
+        "sauc": {
+            "url": "wss://openspeech.bytedance.com/api/v3/plan/sauc/bigmodel_async",
+            "api_key": "你的 API Key",
+            "resource_id": "volc.seedasr.sauc.duration",
+            "segment_ms": 200,   # 音频分包大小（ms）
+            "timeout": 10,       # 等待识别结果超时（秒）
+        },
         "doubao": {
             # "standard": 录音文件识别标准版，调用 /submit + /query
             # "flash": 录音文件极速版，调用 /recognize/flash
@@ -233,6 +249,16 @@ APP_CONFIG = {
             # 豆包语音合成 API 配置
             # 文档地址: https://www.volcengine.com/docs/6561/1598757?lang=zh
             # 产品地址: https://www.volcengine.com/docs/6561/1871062
+            #
+            # 鉴权二选一（api_key 优先）：
+            # ① 新版 X-Api-Key 鉴权（火山新版控制台 / 方舟 Agent Plan）：
+            #    - 方舟 Agent Plan 端点（套餐 AFP 抵扣）:
+            #        "api_url": "https://openspeech.bytedance.com/api/v3/plan/tts/unidirectional"
+            #    - 火山豆包语音默认端点可省略 api_url
+            # "api_key": "你的 API Key",
+            # "api_url": "https://openspeech.bytedance.com/api/v3/plan/tts/unidirectional",
+            #
+            # ② 旧版 App ID + Access Key 鉴权：
             "app_id": "xxxx",         # 你的 App ID
             "access_key": "xxxxxx",       # 你的 Access Key
             "default_speaker": "zh_female_vv_uranus_bigtts",  # 音色 https://www.volcengine.com/docs/6561/1257544?lang=zh

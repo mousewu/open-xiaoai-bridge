@@ -368,7 +368,10 @@ class OpenAIManager:
             tts_config = ConfigManager.instance().get_app_config("tts.doubao", {})
             app_id = tts_config.get("app_id")
             access_key = tts_config.get("access_key")
-            if not app_id or not access_key:
+            # 新版鉴权（火山新控制台 / 方舟 Agent Plan）：X-Api-Key + 可选端点覆盖
+            api_key = tts_config.get("api_key")
+            api_url = tts_config.get("api_url")
+            if not api_key and (not app_id or not access_key):
                 logger.warning(
                     "[OpenAI] Doubao TTS credentials not configured, falling back to xiaoai native tts"
                 )
@@ -389,26 +392,30 @@ class OpenAIManager:
             if tts_config.get("stream", False):
                 await open_xiaoai_server.tts_stream_play(
                     text,
-                    app_id=app_id,
-                    access_key=access_key,
+                    app_id=app_id or "",
+                    access_key=access_key or "",
                     resource_id=tts.resource_id,
                     speaker=speaker_id,
                     speed=cls._tts_speed,
                     format=resolved_format,
                     sample_rate=24000,
                     playback_token=playback_token,
+                    api_key=api_key,
+                    api_url=api_url,
                 )
             else:
                 await open_xiaoai_server.tts_play(
                     text,
-                    app_id=app_id,
-                    access_key=access_key,
+                    app_id=app_id or "",
+                    access_key=access_key or "",
                     resource_id=tts.resource_id,
                     speaker=speaker_id,
                     speed=cls._tts_speed,
                     format=resolved_format,
                     sample_rate=24000,
                     playback_token=playback_token,
+                    api_key=api_key,
+                    api_url=api_url,
                 )
         except Exception as exc:
             logger.error(f"[OpenAI] Error playing response with TTS: {exc}")

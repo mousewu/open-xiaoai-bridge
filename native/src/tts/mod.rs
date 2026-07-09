@@ -222,7 +222,7 @@ fn detect_format_from_path(path: &str) -> String {
 /// Stream TTS: fetch audio from Doubao API, decode to PCM in chunks, and play via WebSocket.
 /// Supports MP3, OGG Vorbis, WAV, FLAC formats.
 #[pyfunction]
-#[pyo3(signature = (text, app_id, access_key, resource_id, speaker, speed=1.0, format="mp3".to_string(), sample_rate=24000, emotion=None, context_texts=None, playback_token=None))]
+#[pyo3(signature = (text, app_id, access_key, resource_id, speaker, speed=1.0, format="mp3".to_string(), sample_rate=24000, emotion=None, context_texts=None, playback_token=None, api_key=None, api_url=None))]
 pub fn tts_stream_play(
     py: Python<'_>,
     text: String,
@@ -236,12 +236,15 @@ pub fn tts_stream_play(
     emotion: Option<String>,
     context_texts: Option<Vec<String>>,
     playback_token: Option<u64>,
+    api_key: Option<String>,
+    api_url: Option<String>,
 ) -> PyResult<Bound<'_, PyAny>> {
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
         let playback_token = playback_token.unwrap_or_else(|| begin_playback_session());
         let started_at = Instant::now();
         let is_pcm_passthrough = format == "pcm";
-        let client = DoubaoStreamClient::new(app_id, access_key, resource_id, speaker);
+        let client = DoubaoStreamClient::new(app_id, access_key, resource_id, speaker)
+            .with_auth(api_key, api_url);
 
         let (tx, mut rx) = mpsc::channel::<Vec<u8>>(16);
 
@@ -446,7 +449,7 @@ pub fn tts_stream_play(
 
 /// Stream TTS in background, but wait until the remote request is accepted.
 #[pyfunction]
-#[pyo3(signature = (text, app_id, access_key, resource_id, speaker, speed=1.0, format="mp3".to_string(), sample_rate=24000, emotion=None, context_texts=None, playback_token=None))]
+#[pyo3(signature = (text, app_id, access_key, resource_id, speaker, speed=1.0, format="mp3".to_string(), sample_rate=24000, emotion=None, context_texts=None, playback_token=None, api_key=None, api_url=None))]
 pub fn tts_stream_play_background(
     py: Python<'_>,
     text: String,
@@ -460,13 +463,16 @@ pub fn tts_stream_play_background(
     emotion: Option<String>,
     context_texts: Option<Vec<String>>,
     playback_token: Option<u64>,
+    api_key: Option<String>,
+    api_url: Option<String>,
 ) -> PyResult<Bound<'_, PyAny>> {
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
         let (ready_tx, ready_rx) = oneshot::channel::<Result<(), String>>();
         let playback_token = playback_token.unwrap_or_else(|| begin_playback_session());
 
         tokio::spawn(async move {
-            let client = DoubaoStreamClient::new(app_id, access_key, resource_id, speaker);
+            let client = DoubaoStreamClient::new(app_id, access_key, resource_id, speaker)
+            .with_auth(api_key, api_url);
             let (tx, mut rx) = mpsc::channel::<Vec<u8>>(16);
             let started_at = Instant::now();
             let is_pcm_passthrough = format == "pcm";
@@ -672,7 +678,7 @@ pub fn tts_stream_play_background(
 
 /// Non-streaming TTS: fetch all audio, decode to PCM, then play.
 #[pyfunction]
-#[pyo3(signature = (text, app_id, access_key, resource_id, speaker, speed=1.0, format="mp3".to_string(), sample_rate=24000, emotion=None, context_texts=None, playback_token=None))]
+#[pyo3(signature = (text, app_id, access_key, resource_id, speaker, speed=1.0, format="mp3".to_string(), sample_rate=24000, emotion=None, context_texts=None, playback_token=None, api_key=None, api_url=None))]
 pub fn tts_play(
     py: Python<'_>,
     text: String,
@@ -686,11 +692,14 @@ pub fn tts_play(
     emotion: Option<String>,
     context_texts: Option<Vec<String>>,
     playback_token: Option<u64>,
+    api_key: Option<String>,
+    api_url: Option<String>,
 ) -> PyResult<Bound<'_, PyAny>> {
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
         let playback_token = playback_token.unwrap_or_else(begin_playback_session);
         let started_at = Instant::now();
-        let client = DoubaoStreamClient::new(app_id, access_key, resource_id, speaker);
+        let client = DoubaoStreamClient::new(app_id, access_key, resource_id, speaker)
+            .with_auth(api_key, api_url);
 
         let encoded_audio = client
             .fetch_audio(&text, &format, sample_rate, speed, context_texts, emotion)
@@ -727,7 +736,7 @@ pub fn tts_play(
 
 /// Fetch TTS in background, but wait until the remote request succeeds.
 #[pyfunction]
-#[pyo3(signature = (text, app_id, access_key, resource_id, speaker, speed=1.0, format="mp3".to_string(), sample_rate=24000, emotion=None, context_texts=None, playback_token=None))]
+#[pyo3(signature = (text, app_id, access_key, resource_id, speaker, speed=1.0, format="mp3".to_string(), sample_rate=24000, emotion=None, context_texts=None, playback_token=None, api_key=None, api_url=None))]
 pub fn tts_play_background(
     py: Python<'_>,
     text: String,
@@ -741,6 +750,8 @@ pub fn tts_play_background(
     emotion: Option<String>,
     context_texts: Option<Vec<String>>,
     playback_token: Option<u64>,
+    api_key: Option<String>,
+    api_url: Option<String>,
 ) -> PyResult<Bound<'_, PyAny>> {
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
         let (ready_tx, ready_rx) = oneshot::channel::<Result<(), String>>();
@@ -748,7 +759,8 @@ pub fn tts_play_background(
 
         tokio::spawn(async move {
             let started_at = Instant::now();
-            let client = DoubaoStreamClient::new(app_id, access_key, resource_id, speaker);
+            let client = DoubaoStreamClient::new(app_id, access_key, resource_id, speaker)
+            .with_auth(api_key, api_url);
 
             let encoded_audio = match client
                 .fetch_audio(&text, &format, sample_rate, speed, context_texts, emotion)
@@ -846,7 +858,7 @@ pub fn play_audio_file(
 
 /// Stream TTS without playback and return timing/statistics as JSON.
 #[pyfunction]
-#[pyo3(signature = (text, app_id, access_key, resource_id, speaker, speed=1.0, format="mp3".to_string(), sample_rate=24000, emotion=None, context_texts=None))]
+#[pyo3(signature = (text, app_id, access_key, resource_id, speaker, speed=1.0, format="mp3".to_string(), sample_rate=24000, emotion=None, context_texts=None, api_key=None, api_url=None))]
 pub fn tts_stream_collect(
     py: Python<'_>,
     text: String,
@@ -859,10 +871,13 @@ pub fn tts_stream_collect(
     sample_rate: u32,
     emotion: Option<String>,
     context_texts: Option<Vec<String>>,
+    api_key: Option<String>,
+    api_url: Option<String>,
 ) -> PyResult<Bound<'_, PyAny>> {
     pyo3_async_runtimes::tokio::future_into_py(py, async move {
         let started_at = Instant::now();
-        let client = DoubaoStreamClient::new(app_id, access_key, resource_id, speaker);
+        let client = DoubaoStreamClient::new(app_id, access_key, resource_id, speaker)
+            .with_auth(api_key, api_url);
         let (tx, mut rx) = mpsc::channel::<Vec<u8>>(16);
         let is_pcm_passthrough = format == "pcm";
 

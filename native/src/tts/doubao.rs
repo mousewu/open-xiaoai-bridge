@@ -13,6 +13,9 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 pub struct DoubaoStreamClient {
     app_id: String,
     access_key: String,
+    /// 新版鉴权：非空时使用 X-Api-Key 头（火山新控制台 / 方舟 Agent Plan），
+    /// 否则回退到 X-Api-App-Id + X-Api-Access-Key 旧版鉴权
+    api_key: String,
     resource_id: String,
     speaker: String,
     api_url: String,
@@ -23,9 +26,38 @@ impl DoubaoStreamClient {
         Self {
             app_id,
             access_key,
+            api_key: String::new(),
             resource_id,
             speaker,
             api_url: DEFAULT_URL.to_string(),
+        }
+    }
+
+    /// Override auth mode (X-Api-Key) and/or endpoint URL.
+    pub fn with_auth(mut self, api_key: Option<String>, api_url: Option<String>) -> Self {
+        if let Some(key) = api_key {
+            if !key.is_empty() {
+                self.api_key = key;
+            }
+        }
+        if let Some(url) = api_url {
+            if !url.is_empty() {
+                self.api_url = url;
+            }
+        }
+        self
+    }
+
+    /// Apply auth headers to a request builder.
+    fn auth_headers(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        if !self.api_key.is_empty() {
+            req.header("X-Api-Key", &self.api_key)
+                .header("X-Api-Resource-Id", &self.resource_id)
+                .header("X-Api-Request-Id", uuid::Uuid::new_v4().to_string())
+        } else {
+            req.header("X-Api-App-Id", &self.app_id)
+                .header("X-Api-Access-Key", &self.access_key)
+                .header("X-Api-Resource-Id", &self.resource_id)
         }
     }
 
@@ -161,11 +193,8 @@ impl DoubaoStreamClient {
 
         let payload = self.build_payload(text, format, sample_rate, speed, context_texts, emotion);
 
-        let response = client
-            .post(&self.api_url)
-            .header("X-Api-App-Id", &self.app_id)
-            .header("X-Api-Access-Key", &self.access_key)
-            .header("X-Api-Resource-Id", &self.resource_id)
+        let response = self
+            .auth_headers(client.post(&self.api_url))
             .header("Content-Type", "application/json")
             .header("Connection", "keep-alive")
             .json(&payload)
@@ -263,11 +292,8 @@ impl DoubaoStreamClient {
 
         let payload = self.build_payload(text, format, sample_rate, speed, context_texts, emotion);
 
-        let response = client
-            .post(&self.api_url)
-            .header("X-Api-App-Id", &self.app_id)
-            .header("X-Api-Access-Key", &self.access_key)
-            .header("X-Api-Resource-Id", &self.resource_id)
+        let response = self
+            .auth_headers(client.post(&self.api_url))
             .header("Content-Type", "application/json")
             .header("Connection", "keep-alive")
             .json(&payload)
