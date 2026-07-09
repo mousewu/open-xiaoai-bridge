@@ -52,6 +52,7 @@ open-xiaoai-bridge/
 │       └── tts/                   # TTS 音频处理（流式、PCM 直通、MP3 解码）
 ├── app/openclaw/                  # OpenClaw 设备身份存储（Ed25519 密钥）
 ├── skills/xiaoai-tts/             # Agent 工具：通过 HTTP API 控制小爱播放
+├── skills/audio-player/           # Agent 工具：本地音频库检索/歌单连播 + YouTube 兜底
 └── tests/                         # 测试脚本
 ```
 
@@ -331,7 +332,7 @@ python3 tests/test_openclaw_live_connectivity.py
 
 | 通道 | 进程/服务 | 触发方式 | 中断方式 |
 |------|-----------|---------|---------|
-| PCM 直通 | `aplay` | `open_xiaoai_server.start_playing()` → WebSocket stream | `open_xiaoai_server.stop_playing()` |
+| PCM 直通 | `aplay` | `open_xiaoai_server.start_playing()` → WebSocket stream | `stop_tts_playback(None)` **+** `stop_playing()`（只杀 aplay 不够：Rust 播放泵持有 token 仍存活，会通过 `ensure_player_ready()` 重新拉起 aplay，音频"复活"） |
 | 阻塞 TTS | `tts_play.sh` → `miplayer -f <file>` | `speaker.play(blocking=True)` | `killall tts_play.sh miplayer` |
 | 非阻塞 TTS | `mibrain_service` (内部播放) | `speaker.play(blocking=False)` → `ubus call mibrain text_to_speech` | `mphelper pause`（不一定可靠） |
 | 媒体播放器 | `mediaplayer` (系统守护进程) | `ubus call mediaplayer player_play_url` | `mphelper pause` / `ubus call mediaplayer player_play_operation '{"action":"pause"}'` |
