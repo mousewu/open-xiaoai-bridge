@@ -160,6 +160,11 @@ class APIServer:
                     status=503
                 )
 
+            # 媒体播放接管音频通道：终止进行中的连续对话，
+            # 否则稍后到达的 Agent 回复 TTS 会抢占并杀掉本次播放
+            from core.wakeup_session import EventManager
+            EventManager.stop_external_conversations("media playback: /api/play/url")
+
             if blocking:
                 result = await speaker.play(url=url, blocking=True, timeout=timeout)
                 return web.json_response({"success": result})
@@ -240,6 +245,11 @@ class APIServer:
 
             logger.info(f"[APIServer] Received file: {filename}, size: {total_size} bytes, blocking={blocking}, sample_rate={sample_rate}")
             logger.info(f"[APIServer] Saved upload to temp file: {temp_path}")
+
+            # 媒体播放接管音频通道：终止进行中的连续对话，
+            # 否则稍后到达的 Agent 回复 TTS 会抢占并杀掉本次播放
+            from core.wakeup_session import EventManager
+            EventManager.stop_external_conversations("media playback: /api/play/file")
 
             async def play_audio():
                 try:

@@ -120,6 +120,10 @@ class SpeakerManager:
         aplay 不立即重启，由 Rust 侧 ensure_player_ready() 在首次
         发送音频数据时按需启动，避免空 buffer 导致 underrun。
         """
+        # 必须先全局取消 Rust 侧活动播放会话（token 失效 → 播放泵退出），
+        # 否则仅杀 aplay 后，仍在运行的播放泵会在下一个 chunk 发送时
+        # 通过 ensure_player_ready() 把 aplay 重新拉起，导致音频"复活"
+        open_xiaoai_server.stop_tts_playback(None)
         await self.run_shell(
             "killall tts_play.sh miplayer 2>/dev/null; mphelper pause"
         )

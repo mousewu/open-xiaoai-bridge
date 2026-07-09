@@ -76,6 +76,33 @@ class WakeupSessionManager:
         from core.xiaoai import XiaoAI
         XiaoAI.stop_conversation()
 
+    def stop_external_conversations(self, reason: str = "") -> bool:
+        """Stop active OpenClaw/OpenAI conversations without touching device audio.
+
+        Used when out-of-band media playback (e.g. Agent 通过 /api/play/file 放音乐)
+        接管音频通道：终止对话循环，防止稍后到达的回复 TTS 抢占新播放。
+        Returns True if any conversation was stopped.
+        """
+        stopped = False
+        loop = self._get_loop()
+
+        if self._openclaw_controller and self._openclaw_controller.is_active():
+            self._openclaw_controller.stop()
+            stopped = True
+        if self._openclaw_task and not self._openclaw_task.done():
+            loop.call_soon_threadsafe(self._openclaw_task.cancel)
+            stopped = True
+        if self._openai_controller and self._openai_controller.is_active():
+            self._openai_controller.stop()
+            stopped = True
+        if self._openai_task and not self._openai_task.done():
+            loop.call_soon_threadsafe(self._openai_task.cancel)
+            stopped = True
+
+        if stopped:
+            logger.info(f"[Wakeup] External conversations stopped ({reason})")
+        return stopped
+
     def on_wakeup(self):
         logger.info("[Wakeup] Wakeup session started")
         xiaozhi = get_xiaozhi()

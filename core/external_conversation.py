@@ -232,6 +232,12 @@ class ExternalConversationController:
         for kw in self.exit_keywords:
             if kw in text:
                 logger.info(f"Exit keyword: {kw}", module=self.LOG_MODULE)
+                if "停" in text:
+                    # "停止/停止播放"意图是停掉正在播的内容（如 skill 播放的音乐），
+                    # 不只是退出对话；"退出/再见"则保留后台播放不动
+                    speaker = get_speaker()
+                    if speaker:
+                        await speaker.stop_device_audio()
                 return "exit"
 
         # 4. Send to backend and wait for response
@@ -277,6 +283,12 @@ class ExternalConversationController:
         for kw in self.exit_keywords:
             if kw in text:
                 logger.info(f"Exit keyword: {kw}", module=self.LOG_MODULE)
+                if "停" in text:
+                    # "停止/停止播放"意图是停掉正在播的内容（如 skill 播放的音乐），
+                    # 不只是退出对话；"退出/再见"则保留后台播放不动
+                    speaker = get_speaker()
+                    if speaker:
+                        await speaker.stop_device_audio()
                 return "exit"
 
         full_text = text
