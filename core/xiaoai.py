@@ -159,8 +159,15 @@ class XiaoAI:
         logger.warning(
             f"[XiaoAI] 音频输入断流 {silence:.0f}s，自动重启录音通道"
         )
+
+        # 注意：Rust awaitable 必须在事件循环内创建（与 on_output_data 同样的
+        # 包装模式）。在看门狗线程直接调用 open_xiaoai_server.start_recording()
+        # 会在创建时即抛 "no running event loop"
+        async def _restart_recording():
+            return await open_xiaoai_server.start_recording()
+
         future = asyncio.run_coroutine_threadsafe(
-            open_xiaoai_server.start_recording(),
+            _restart_recording(),
             cls.async_loop,
         )
         try:
@@ -182,8 +189,12 @@ class XiaoAI:
         # 连续无回执 → 连接僵死：强制断开释放坑位，客户端会自动重连
         cls._watchdog_failures = 0
         logger.warning("[XiaoAI] 连接疑似僵死，强制断开以触发客户端重连")
+
+        async def _force_disconnect():
+            return await open_xiaoai_server.force_disconnect()
+
         disconnect_future = asyncio.run_coroutine_threadsafe(
-            open_xiaoai_server.force_disconnect(),
+            _force_disconnect(),
             cls.async_loop,
         )
         try:
@@ -212,7 +223,9 @@ class XiaoAI:
                 try:
                     cls._audio_watchdog_tick()
                 except Exception as exc:
-                    logger.debug(f"[XiaoAI] 看门狗异常: {exc}")
+                    # 必须可见：此处曾以 debug 级吞掉 "no running event loop"，
+                    # 导致看门狗空转数日而无人知晓
+                    logger.error(f"[XiaoAI] 看门狗异常: {exc}")
 
         threading.Thread(
             target=_watchdog_loop, daemon=True, name="audio-input-watchdog"
