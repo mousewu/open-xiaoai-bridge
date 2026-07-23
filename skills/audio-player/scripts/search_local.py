@@ -73,8 +73,8 @@ def main():
     parser.add_argument("query", help="检索关键词，空格分隔多个词（如 'yakka dee tiger'）")
     parser.add_argument(
         "--library",
-        default=os.environ.get("MUSIC_LIBRARY_DIR", os.path.expanduser("~/Music")),
-        help="音频库根目录（默认 $MUSIC_LIBRARY_DIR 或 ~/Music）",
+        default=os.environ.get("MUSIC_LIBRARY_DIR", "/Volumes/music"),
+        help="音频库根目录（默认 $MUSIC_LIBRARY_DIR 或 /Volumes/music）",
     )
     parser.add_argument("--limit", type=int, default=10, help="最多返回条数（默认 10）")
     args = parser.parse_args()

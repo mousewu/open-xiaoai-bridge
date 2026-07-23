@@ -17,7 +17,7 @@ import subprocess
 import sys
 
 CACHE_DIR = os.path.expanduser(
-    os.environ.get("AUDIO_PLAYER_CACHE", "~/Music/YouTube")
+    os.environ.get("AUDIO_PLAYER_CACHE", "/Volumes/music/YouTube")
 )
 
 
