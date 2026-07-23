@@ -104,17 +104,19 @@ fn start_playing(py: Python) -> PyResult<Bound<PyAny>> {
 fn stop_recording(py: Python) -> PyResult<Bound<PyAny>> {
     pyo3_async_runtimes::tokio::future_into_py(py, async {
         let _ = RPC::instance()
-            .call_remote("stop_recording", None, None)
+            .call_remote("stop_recording", None, Some(10_000))
             .await;
         Ok(())
     })
 }
 
 /// Restart the remote arecord process (unmutes the microphone).
+/// Fails (instead of hanging forever) if the client does not respond
+/// within 10s, so the Python-side watchdog can detect zombie connections.
 #[pyfunction]
 fn start_recording(py: Python) -> PyResult<Bound<PyAny>> {
     pyo3_async_runtimes::tokio::future_into_py(py, async {
-        let _ = RPC::instance()
+        let res = RPC::instance()
             .call_remote(
                 "start_recording",
                 Some(json!(AudioConfig {
@@ -125,9 +127,29 @@ fn start_recording(py: Python) -> PyResult<Bound<PyAny>> {
                     period_size: 1440 / 4,
                     buffer_size: 1440,
                 })),
-                None,
+                Some(10_000),
             )
             .await;
+        match res {
+            Ok(_) => Ok(()),
+            Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                "start_recording RPC failed: {}",
+                e
+            ))),
+        }
+    })
+}
+
+/// Force-drop the current client connection.
+///
+/// Used by the audio-input watchdog when the connection is deemed zombie
+/// (client stopped responding without a TCP FIN): disposing the session
+/// makes process_messages() return, freeing the single-connection server
+/// to accept the client's reconnect attempts.
+#[pyfunction]
+fn force_disconnect(py: Python) -> PyResult<Bound<PyAny>> {
+    pyo3_async_runtimes::tokio::future_into_py(py, async {
+        MessageManager::instance().dispose().await;
         Ok(())
     })
 }
@@ -143,6 +165,7 @@ fn open_xiaoai_server(_py: Python, m: Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(start_playing, &m)?)?;
     m.add_function(wrap_pyfunction!(stop_recording, &m)?)?;
     m.add_function(wrap_pyfunction!(start_recording, &m)?)?;
+    m.add_function(wrap_pyfunction!(force_disconnect, &m)?)?;
     crate::opus::init_module(&m)?;
     crate::python::init_module(&m)?;
     crate::tts::init_module(&m)?;

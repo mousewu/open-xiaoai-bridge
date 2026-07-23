@@ -107,13 +107,120 @@ class XiaoAI:
                 f"[XiaoAI] Failed to pause suppressed dialog {dialog_id}: {exc}"
             )
 
+    # ---- 音频输入断流看门狗 ----
+    # 已知故障模式两种：
+    #   1. 服务/音箱重启后录音通道未恢复推流 → 重启录音通道可救
+    #   2. 客户端僵死（TCP 未断但停止一切响应）→ 录音重启指令石沉大海，
+    #      且僵尸连接占据单连接服务器的坑位，音箱重连被拒之门外
+    #      → 需强制断开连接，让客户端重连（实测重连在 1s 内完成）
+    _last_input_at: float = 0.0
+    _watchdog_last_restart: float = 0.0
+    _watchdog_failures: int = 0  # 连续无回执的救援次数
+    WATCHDOG_CHECK_INTERVAL = 30  # 检查周期（秒）
+    WATCHDOG_SILENCE_THRESHOLD = 120  # 判定断流的静默时长（秒），需大于对话 TTS 的最长关麦窗口
+    WATCHDOG_RESTART_COOLDOWN = 300  # 两次自动重启的最小间隔（秒），避免音箱离线时刷屏
+    WATCHDOG_RETRY_COOLDOWN = 60  # 已有失败记录时缩短重试间隔，加速僵尸判定
+    WATCHDOG_RPC_TIMEOUT = 15  # 等待救援指令回执的超时（秒），Rust 侧 RPC 自身 10s 超时
+    WATCHDOG_MAX_FAILURES = 2  # 连续无回执达到该次数 → 判定连接僵死，强制断开
+
     @classmethod
     def on_input_data(cls, data: bytes):
+        cls._last_input_at = time.monotonic()
         audio_array = np.frombuffer(data, dtype=np.int16)
         if cls._input_gain_enabled and audio_array.size > 0:
             boosted = audio_array.astype(np.float32) * cls._input_gain
             audio_array = np.clip(boosted, -32768, 32767).astype(np.int16)
         GlobalStream.input(audio_array.tobytes())
+
+    @classmethod
+    def _audio_watchdog_tick(cls):
+        now = time.monotonic()
+        silence = now - cls._last_input_at
+        if silence < cls.WATCHDOG_SILENCE_THRESHOLD:
+            return
+
+        # 连续对话进行中的静默是有意关麦（TTS 播放期间），不干预
+        for controller in (
+            EventManager._openclaw_controller,
+            EventManager._openai_controller,
+        ):
+            if controller and controller.is_active():
+                return
+
+        cooldown = (
+            cls.WATCHDOG_RETRY_COOLDOWN
+            if cls._watchdog_failures > 0
+            else cls.WATCHDOG_RESTART_COOLDOWN
+        )
+        if now - cls._watchdog_last_restart < cooldown:
+            return
+        cls._watchdog_last_restart = now
+
+        logger.warning(
+            f"[XiaoAI] 音频输入断流 {silence:.0f}s，自动重启录音通道"
+        )
+        future = asyncio.run_coroutine_threadsafe(
+            open_xiaoai_server.start_recording(),
+            cls.async_loop,
+        )
+        try:
+            # 看门狗独立线程，阻塞等待回执是安全的
+            future.result(timeout=cls.WATCHDOG_RPC_TIMEOUT)
+            cls._watchdog_failures = 0
+            logger.info("[XiaoAI] 录音通道重启指令已确认")
+            return
+        except Exception as exc:
+            cls._watchdog_failures += 1
+            logger.error(
+                f"[XiaoAI] 录音通道重启无回执"
+                f"({cls._watchdog_failures}/{cls.WATCHDOG_MAX_FAILURES}): {exc}"
+            )
+
+        if cls._watchdog_failures < cls.WATCHDOG_MAX_FAILURES:
+            return
+
+        # 连续无回执 → 连接僵死：强制断开释放坑位，客户端会自动重连
+        cls._watchdog_failures = 0
+        logger.warning("[XiaoAI] 连接疑似僵死，强制断开以触发客户端重连")
+        disconnect_future = asyncio.run_coroutine_threadsafe(
+            open_xiaoai_server.force_disconnect(),
+            cls.async_loop,
+        )
+        try:
+            disconnect_future.result(timeout=10)
+            logger.info("[XiaoAI] 僵尸连接已断开，等待客户端重连")
+        except Exception as exc:
+            logger.error(f"[XiaoAI] 强制断开失败: {exc}")
+
+    @classmethod
+    def _start_audio_watchdog(cls):
+        audio_input_enabled = (
+            __import__("os").environ.get("AUDIO_INPUT_ENABLE", "1").strip().lower()
+            in ("1", "true", "yes", "on")
+        )
+        if not audio_input_enabled:
+            logger.debug("[XiaoAI] 音频输入已禁用，跳过断流看门狗")
+            return
+
+        # 以启动时刻为基线：覆盖"启动后从未收到过音频"的场景
+        # （即 2026-07-12 22:44 事故的实际形态）
+        cls._last_input_at = time.monotonic()
+
+        def _watchdog_loop():
+            while True:
+                time.sleep(cls.WATCHDOG_CHECK_INTERVAL)
+                try:
+                    cls._audio_watchdog_tick()
+                except Exception as exc:
+                    logger.debug(f"[XiaoAI] 看门狗异常: {exc}")
+
+        threading.Thread(
+            target=_watchdog_loop, daemon=True, name="audio-input-watchdog"
+        ).start()
+        logger.info(
+            f"[XiaoAI] 音频断流看门狗已启动（静默阈值 {cls.WATCHDOG_SILENCE_THRESHOLD}s，"
+            f"冷却 {cls.WATCHDOG_RESTART_COOLDOWN}s）"
+        )
 
     @classmethod
     def on_output_data(cls, data: bytes):
@@ -221,6 +328,15 @@ class XiaoAI:
                     # 只有明确的 is_vad_begin=False 且没有文本时才触发唤醒
                     # 避免重复触发
                     if not text and is_vad_begin is False:
+                        # xiaoai_asr 接管会程序化静默唤醒小爱，设备同样上报此事件；
+                        # 若最近刚发起过自唤醒，视为回环事件忽略，
+                        # 否则接管动作会触发 on_interrupt 杀掉自己刚开启的会话
+                        speaker = get_speaker()
+                        if speaker and speaker.was_self_wake_recent():
+                            logger.debug(
+                                "[XiaoAI] 忽略自唤醒回环事件（程序化唤醒 3s 窗口内）"
+                            )
+                            return
                         logger.wakeup("小爱同学", module="XiaoAI")
                         cls.conversation.reset_retries()
                         EventManager.on_interrupt()
@@ -307,6 +423,7 @@ class XiaoAI:
         open_xiaoai_server.register_fn("on_input_data", cls.on_input_data)
         open_xiaoai_server.register_fn("on_event", cls.__on_event)
         cls.__init_background_event_loop()
+        cls._start_audio_watchdog()
         logger.info("[XiaoAI] 启动小爱音箱服务...")
         print(ASCII_BANNER)
         await open_xiaoai_server.start_server()
