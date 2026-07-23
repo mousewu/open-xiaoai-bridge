@@ -267,8 +267,9 @@ class ExternalConversationController:
         await self._play_tts(str(response))
         await self._play_notify()
         await self._start_recording()
-        logger.debug("Recording started, waiting for silence...", module=self.LOG_MODULE)
-        await self._wait_for_silence(vad)
+        # 不再等待环境静音（_wait_for_silence）：麦克风在 TTS 和提示音期间
+        # 物理关闭，开麦时缓冲本来就是干净的；而用户听到提示音后立即开口是
+        # 常态，等静音阶段会把话头当"环境未安静"白白消耗，导致 ASR 收到半句话
         logger.debug("Ready to listen", module=self.LOG_MODULE)
 
         return "continue"

@@ -42,6 +42,8 @@ class APIServer:
         # TTS endpoints
         self.app.router.add_post("/api/tts/doubao", self.handle_tts_doubao)
         self.app.router.add_get("/api/tts/doubao_voices", self.handle_tts_voices)
+        # XiaoAI NLP command
+        self.app.router.add_post("/api/xiaoai/ask", self.handle_xiaoai_ask)
 
     def _create_background_task(
         self,
@@ -563,6 +565,54 @@ class APIServer:
                 f"format={resolved_format}, blocking={blocking}, stream={use_stream}, "
                 f"error={type(e).__name__}: {e}"
             )
+            return web.json_response(
+                {"success": False, "error": str(e)},
+                status=500
+            )
+
+    async def handle_xiaoai_ask(self, request: web.Request) -> web.Response:
+        """
+        POST /api/xiaoai/ask
+        Send a text command to XiaoAI (as if spoken to the speaker)
+
+        Request body:
+            {
+                "text": "播放萌鸡小队第一季",  # required
+                "silent": false               # optional, default false
+            }
+        """
+        try:
+            data = await request.json()
+            text = data.get("text")
+            silent = data.get("silent", False)
+
+            if not text:
+                return web.json_response(
+                    {"success": False, "error": "Missing required field: text"},
+                    status=400
+                )
+
+            speaker = get_speaker()
+            if not speaker:
+                return web.json_response(
+                    {"success": False, "error": "Speaker not initialized"},
+                    status=503
+                )
+
+            # 停止进行中的 TTS/对话，避免抢占
+            from core.wakeup_session import EventManager
+            EventManager.stop_external_conversations(f"xiaoai ask: {text}")
+
+            result = await speaker.ask_xiaoai(text, silent=silent)
+            return web.json_response({"success": result, "text": text})
+
+        except json.JSONDecodeError:
+            return web.json_response(
+                {"success": False, "error": "Invalid JSON"},
+                status=400
+            )
+        except Exception as e:
+            logger.error(f"[APIServer] Error asking xiaoai: {e}")
             return web.json_response(
                 {"success": False, "error": str(e)},
                 status=500

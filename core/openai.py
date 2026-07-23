@@ -356,6 +356,16 @@ class OpenAIManager:
         try:
             from core.ref import get_speaker
 
+            # 媒体播放让位：Agent 刚通过 /api/play/* 启动的播放（如点歌）
+            # 不应被自己的确认语/回复 TTS 抢占杀掉，此时跳过播报
+            active_speaker = get_speaker()
+            if active_speaker and active_speaker.is_media_playback_active():
+                logger.info(
+                    f"[OpenAI] Media playback in progress, skipping reply TTS "
+                    f"({len(text)} chars): {text[:40]!r}..."
+                )
+                return
+
             resolved_tts_speaker = tts_speaker or cls.get_tts_speaker_for_session_key()
             if resolved_tts_speaker == cls.XIAOAI_TTS_SPEAKER:
                 speaker = get_speaker()

@@ -150,6 +150,15 @@ class WakeupSessionManager:
         kws = get_kws()
         logger.debug(f"[Wakeup] Received wakeup request from {source}: {text}")
 
+        # 唤醒词打断媒体播放：用户在音乐/播客播放中喊唤醒词，意图显然是
+        # 要求关注，先停掉正在播的媒体（grace=0 只停真正在播的，不误伤
+        # 刚结束的会话）。"小爱同学"路径由 on_interrupt 处理，此处覆盖
+        # 自定义唤醒词（KWS）路径
+        speaker = get_speaker()
+        if speaker and speaker.is_media_playback_active(grace_seconds=0):
+            logger.info(f"[Wakeup] Wake word during media playback — stopping media ({source})")
+            await speaker.stop_device_audio()
+
         # Reset session_key to config default before each wakeup,
         # so paths that don't call set_openclaw_session_key() always use the default.
         from core.openclaw import OpenClawManager

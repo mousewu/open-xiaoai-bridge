@@ -87,6 +87,25 @@ class SpeakerManager:
         res = await self.run_shell(command, timeout=timeout)
         return '"code": 0' in res.stdout if res else False
 
+    # 媒体播放会话跟踪：供回复 TTS 判断是否应让位（见 is_media_playback_active）
+    _media_task: asyncio.Task | None = None
+    _media_last_end: float = 0.0
+
+    def _mark_media_ended(self):
+        import time
+        self._media_last_end = time.monotonic()
+
+    def is_media_playback_active(self, grace_seconds: float = 3.0) -> bool:
+        """本地文件媒体播放是否进行中（或刚结束不久，覆盖歌单曲间间隙）。
+
+        回复 TTS（OpenClaw/OpenAI 的 _play_response_with_tts）据此让位，
+        避免 Agent 的确认语通过 playback token 抢占机制杀掉刚开始的媒体播放。
+        """
+        import time
+        if self._media_task is not None and not self._media_task.done():
+            return True
+        return (time.monotonic() - self._media_last_end) < grace_seconds
+
     async def play_server_file(
         self,
         file_path: str,
@@ -106,12 +125,29 @@ class SpeakerManager:
         )
 
         if blocking:
-            await open_xiaoai_server.play_audio_file(file_path, sample_rate=sample_rate)
-            return True
+            self._media_task = asyncio.current_task()
+            try:
+                await open_xiaoai_server.play_audio_file(file_path, sample_rate=sample_rate)
+                return True
+            finally:
+                self._media_task = None
+                self._mark_media_ended()
 
-        asyncio.create_task(
+        task = asyncio.create_task(
             open_xiaoai_server.play_audio_file(file_path, sample_rate=sample_rate)
         )
+        self._media_task = task
+
+        def _on_media_done(done_task: asyncio.Task):
+            if self._media_task is done_task:
+                self._media_task = None
+            self._mark_media_ended()
+            try:
+                done_task.result()
+            except Exception as exc:
+                logger.error(f"[Speaker] Media playback task failed: {exc}")
+
+        task.add_done_callback(_on_media_done)
         return True
 
     async def stop_device_audio(self) -> None:
@@ -129,6 +165,15 @@ class SpeakerManager:
         )
         await open_xiaoai_server.stop_playing()
 
+    # 程序化自唤醒时间戳：xiaoai_asr 接管会静默唤醒小爱，设备会因此上报
+    # 一个"小爱被唤醒"事件；用此时间戳区分自唤醒回环与用户真实唤醒
+    _self_wake_at: float = 0.0
+
+    def was_self_wake_recent(self, window_seconds: float = 3.0) -> bool:
+        """最近是否由程序发起过唤醒（用于忽略自唤醒回环事件）"""
+        import time
+        return (time.monotonic() - self._self_wake_at) < window_seconds
+
     async def wake_up(self, awake=True, silent=True):
         """
         （取消）唤醒小爱
@@ -137,6 +182,9 @@ class SpeakerManager:
             awake: 是否唤醒
             silent: 是否静默唤醒
         """
+        if awake:
+            import time
+            self._self_wake_at = time.monotonic()
 
         if awake:
             if silent:
