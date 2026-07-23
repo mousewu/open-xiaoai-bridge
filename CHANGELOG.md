@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## Fork 版本 - 2026-07-23 增量
+
+### 可靠性：音频输入看门狗 + 僵尸连接自愈
+
+- 新增音频输入断流看门狗（`XiaoAI._audio_watchdog_tick`）：音频帧静默超 120s 且无活跃会话时自动重启录音通道（治"重启后录音未恢复、KWS 静默失聪"）
+- 僵尸连接自愈：录音重启 RPC 加 10s 超时（原为无限等待）；连续 2 次无回执判定客户端僵死（TCP 未断但停止响应，实测曾导致三天无法唤醒），新增 Rust `force_disconnect()` 强制断开释放单连接坑位，客户端 1s 内自动重连
+- xiaoai_asr 实验模式防御：程序化静默唤醒小爱会触发设备"小爱被唤醒"事件，原逻辑误判为用户打断并杀掉自己刚启动的会话；现按 3s 自唤醒窗口识别并忽略回环事件
+
+### 语音质量
+
+- 修复"话头被吃"：删除回合间的 `_wait_for_silence` 阶段——用户听到提示音立即开口时，前几个字会被该阶段当环境噪音消耗，导致 ASR 只收到半句话（麦克风在 TTS 期间物理关闭，开麦时缓冲本就干净，该等待有害无益）
+- SAUC ASR 新增热词直传（`asr.sauc.hotwords`，提高专有名词识别率）与语义顺滑（`enable_ddc`）
+- 唤醒/断句参数调优默认值参考：KWS score 2.5 / threshold 0.15，VAD threshold 0.06 / min_silence 800ms
+
+### 媒体播放优先级体系
+
+- 回复 TTS 让位媒体播放：`_play_response_with_tts` 检测媒体播放进行中（含歌单曲间 3s 间隙）时跳过播报——覆盖连续对话、单次指令、Agent 主动播报全部路径，Agent 的确认语不再杀掉刚点播的音乐
+- 唤醒词打断媒体：KWS 唤醒时先停止正在播放的媒体再进入对话（原顺序是问候语与音乐混响 1-2 秒后才停）
+- 退出关键词区分意图："停止"退出对话并停掉正在播的内容，"退出/再见"仅退出对话保留后台播放
+
+### audio-player skill 增强
+
+- 断点续播与循环计划（`--resume` / `--loops N`）：进度持久化于 `~/.audio-player/progress.json`，被打断后跨时段、跨天接续，适合"交替列表循环 N 遍"的长期听力计划
+- 播放事件流水（`playback_log.jsonl`）+ 只读统计网页（`stats_server.py`，默认 :9099）：按天聚合收听时长、集目、计划进度，手机可看
+- 响度归一化工具（`normalize_loudness.py`）：EBU R128 两遍 loudnorm 统一多部片源音量
+- 队列运行时文件迁至固定路径 `~/.audio-player/`（原 `tempfile.gettempdir()` 在不同调用环境下 TMPDIR 不同，导致状态文件分裂）
+- 默认音频库改为 `/Volumes/music`（YouTube 下载同步跟随）
+- 新增 API：`POST /api/xiaoai/ask`（把文本指令交给小爱原生 NLP 执行）
+
 ## Fork 版本 - 2026-07-09
 
 > 本版本基于 [coderzc/open-xiaoai-bridge](https://github.com/coderzc/open-xiaoai-bridge) v1.0.6 之后的 main 分支，以下为相对上游的全部修改。

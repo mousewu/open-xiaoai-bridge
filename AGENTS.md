@@ -359,6 +359,8 @@ python3 tests/test_openclaw_live_connectivity.py
 
 **注意**：OpenClaw 对话中 TTS 播放时会 `stop_recording` 防止回声。如果在此期间触发中断（"小爱同学"），必须在中断处理中调用 `start_recording` 恢复录音，否则 KWS 将因无音频数据而永久失效。
 
+**断流自愈**：服务/音箱重启后录音通道可能未恢复推流（KWS "静默失聪"，无报错）。`XiaoAI` 内置音频输入看门狗（`_audio_watchdog_tick`）：音频帧静默超过 120s 且无活跃连续对话时，自动调用 `start_recording()` 重启录音通道（冷却 300s）。静默阈值必须大于对话 TTS 的最长关麦窗口，否则会在播报中途误开麦引入回声。
+
 ### on_interrupt 中断处理要点
 
 `on_interrupt()` 触发时（用户喊"小爱同学"），需要完成以下步骤：
