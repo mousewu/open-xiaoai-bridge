@@ -136,7 +136,7 @@ class _SaucASR:
         return headers
 
     def _request_payload(self, sample_rate: int) -> dict:
-        return {
+        payload = {
             "user": {"uid": "open-xiaoai-bridge"},
             "audio": {
                 "format": "pcm",
@@ -152,6 +152,16 @@ class _SaucASR:
                 "enable_ddc": bool(self._cfg("enable_ddc", False)),
             },
         }
+        # 热词直传：提高专有名词（节目名、人名等）识别率。
+        # 双向流式接口限约 100 token，配置过多时截取前 20 个
+        hotwords = self._cfg("hotwords", []) or []
+        if hotwords:
+            context = json.dumps(
+                {"hotwords": [{"word": str(w)} for w in hotwords[:20]]},
+                ensure_ascii=False,
+            )
+            payload["request"]["corpus"] = {"context": context}
+        return payload
 
     def asr(self, pcm_bytes: bytes, sample_rate: int = 16000) -> str:
         """识别一段完整 PCM 音频，返回文本（失败返回空字符串）。"""
